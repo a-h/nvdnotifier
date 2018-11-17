@@ -1,0 +1,54 @@
+service: nvdnotifier
+frameworkVersion: ">=1.28.0 <2.0.0"
+
+provider:
+  name: aws
+  runtime: go1.x
+  stage: prod
+  region: eu-west-2
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+         - "dynamodb:Query"
+         - "dynamodb:GetItem"
+         - "dynamodb:PutItem"
+      Resource:
+        Fn::GetAtt: [ LastCheck, Arn ]
+
+package:
+ exclude:
+   - ./**
+ include:
+   - ./bin/**
+
+functions:
+  check:
+    handler: bin/check
+    memorySize: 256 # MB
+    timeout: 300 # seconds
+    events:
+      - schedule: rate(30 minutes) # The data changes roughly every 2 hours, so 30 minutes will be enough to capture all changes.
+    reservedConcurrency: 1
+    environment:
+      DYNAMODB_REGION: eu-west-2
+      TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-lastcheck
+
+resources:
+  Resources:
+    LastCheckTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        TableName: ${self:service}-${opt:stage, self:provider.stage}-lastcheck
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: false
+        SSESpecification:
+          SSEEnabled: true
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
