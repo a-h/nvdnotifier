@@ -2,6 +2,7 @@ package checker
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/a-h/nvdnotifier/data"
 	"github.com/a-h/nvdnotifier/logger"
@@ -11,14 +12,23 @@ import (
 
 const pkg = "nvdnotifier"
 
+// A ModifiedMetadataGetter gets the metadata for modified CVEs.
+// The metadata contains the hash of the file and the date it was last updated etc.
 type ModifiedMetadataGetter func() (nvd.Meta, error)
+
+// A ModifiedGetter gets the data for CVEs which have been recently modified.
 type ModifiedGetter func() (d nvd.Data, hash string, err error)
+
+// A RecentMetadataGetter gets the metadata for recently creaated CVEs.
 type RecentMetadataGetter func() (nvd.Meta, error)
+
+// A RecentGetter gets the data for CVEs which have been recently created.
 type RecentGetter func() (d nvd.Data, hash string, err error)
 
 // A Notifier notifies about a matching vulnerability.
 type Notifier func(cve nvd.CVEItem) error
 
+// An IncludeFilter filters out CVEs which don't match.
 type IncludeFilter func(cve nvd.CVEItem) bool
 
 // IncludeGo in the search.
@@ -98,26 +108,49 @@ type Checker struct {
 // RecentOrUpdated returns any new or updated CVEs which match the filters.
 // It also executes any notifications.
 func (c Checker) RecentOrUpdated() (items []nvd.CVEItem, err error) {
-	//TODO: Multithread the calls.
-	rd, err := getIfRequired(c.GetLastRecentMetadata, c.GetRecentMetadata, c.GetRecent, c.PutLastRecentMetadata)
-	if err != nil {
+	var wg sync.WaitGroup
+
+	var rd nvd.Data
+	var rdErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		rd, rdErr = getIfRequired(c.GetLastRecentMetadata, c.GetRecentMetadata, c.GetRecent, c.PutLastRecentMetadata)
+	}()
+
+	var md nvd.Data
+	var mdErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		md, mdErr = getIfRequired(c.GetLastModifiedMetadata, c.GetModifiedMetadata, c.GetModified, c.PutLastModifiedMetadata)
+	}()
+
+	wg.Wait()
+
+	if rdErr != nil {
+		err = fmt.Errorf("error getting recent data: %v", rdErr)
 		return
 	}
+	if mdErr != nil {
+		err = fmt.Errorf("error getting modified data: %v", mdErr)
+		return
+	}
+
 	for _, item := range rd.CVEItems {
 		if matchesAnyFilter(item, c.Include) {
 			items = append(items, item)
 		}
 	}
-	up, err := getIfRequired(c.GetLastModifiedMetadata, c.GetModifiedMetadata, c.GetModified, c.PutLastModifiedMetadata)
-	if err != nil {
-		return
-	}
-	for _, item := range up.CVEItems {
+	for _, item := range md.CVEItems {
 		if matchesAnyFilter(item, c.Include) {
 			items = append(items, item)
 		}
 	}
-	//TODO: Remove duplicates from the items.
+	items, err = removeDuplicateItems(items)
+	if err != nil {
+		return
+	}
 	items, err = removeNotifiedItems(items, c.HasBeenNotified)
 	if err != nil {
 		return
@@ -133,6 +166,24 @@ func (c Checker) RecentOrUpdated() (items []nvd.CVEItem, err error) {
 			err = fmt.Errorf("failed to mark %v as notified: %v", item.CVE.CVEDataMeta.ID, nErr)
 			return
 		}
+	}
+	return
+}
+
+func removeDuplicateItems(input []nvd.CVEItem) (output []nvd.CVEItem, err error) {
+	output = []nvd.CVEItem{}
+	previous := map[string]struct{}{}
+	for _, item := range input {
+		hash, hErr := item.Hash()
+		if hErr != nil {
+			err = fmt.Errorf("error creating hash of CVE %v: %v", item.CVE.CVEDataMeta.ID, hErr)
+			return
+		}
+		if _, alreadySeen := previous[hash]; alreadySeen {
+			continue
+		}
+		output = append(output, item)
+		previous[hash] = struct{}{}
 	}
 	return
 }

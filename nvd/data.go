@@ -58,6 +58,15 @@ type CVEItem struct {
 	LastModifiedDate string         `json:"lastModifiedDate"`
 }
 
+// Hash of the item.
+func (cve CVEItem) Hash() (string, error) {
+	b, err := json.Marshal(cve)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%02x", sha256.Sum256(b)), nil
+}
+
 type Impact struct {
 	BaseMetricV2 BaseMetricV2 `json:"baseMetricV2"`
 }
