@@ -4,8 +4,12 @@ Notifies on Slack when a new vulnerability is added to the https://nvd.nist.gov 
 
 * Runs as a Lambda every 30 minutes.
 * Limit to relevant vendors and products by using include filters.
+* Preconfigured to return Go and Node.JS CVEs.
 * Notify via Slack Webhook.
 
+<img src="slack.png"/>
+
+### Example filter function
 
 ```go
 func IncludeGo(cve nvd.CVEItem) (include bool) {
