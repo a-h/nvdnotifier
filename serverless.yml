@@ -37,7 +37,9 @@ functions:
     reservedConcurrency: 1
     environment:
       DYNAMODB_REGION: eu-west-2
-      TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-lastcheck
+      METADATA_TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-metadata
+      NOTIFICATION_TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-notification
+      SLACK_WEBHOOK_URL: https://hooks.slack.com/services/xxxxxxxxxxxxx
 
 resources:
   Resources:
