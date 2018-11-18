@@ -54,7 +54,12 @@ func run(region, metadataTableName, notificationTableName, slackWebhookURL strin
 				products = append(products, fmt.Sprintf("%v", p.ProductName))
 			}
 		}
-		text := fmt.Sprintf("Vendor %v, Product %v: %v", strings.Join(vendors, ", "), strings.Join(products, ", "), cve.CVE.Description)
+		var descs []string
+		for _, dd := range cve.CVE.Description.DescriptionData {
+			descs = append(descs, dd.Value)
+		}
+		desc := strings.Join(descs, "\n")
+		text := fmt.Sprintf("Vendor %v, Product %v: %v", strings.Join(vendors, ", "), strings.Join(products, ", "), desc)
 		m := slack.NewMessage(cve.CVE.CVEDataMeta.ID, text)
 		return n.Push(m)
 	}
