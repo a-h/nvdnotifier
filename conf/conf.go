@@ -12,6 +12,7 @@ func FromEnvironment() (c Configuration, err error) {
 		DynamoDBRegion:        os.Getenv("DYNAMODB_REGION"),
 		MetadataTableName:     os.Getenv("METADATA_TABLE_NAME"),
 		NotificationTableName: os.Getenv("NOTIFICATION_TABLE_NAME"),
+		SlackWebhookURL:       os.Getenv("SLACK_WEBHOOK_URL"),
 		RunLocal:              os.Getenv("RUN_LOCAL") != "",
 	}
 	var errs []string
@@ -35,5 +36,6 @@ type Configuration struct {
 	DynamoDBRegion        string
 	MetadataTableName     string
 	NotificationTableName string
+	SlackWebhookURL       string
 	RunLocal              bool
 }

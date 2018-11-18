@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/a-h/nvdnotifier/conf"
 	"github.com/a-h/nvdnotifier/dynamo"
+	"github.com/a-h/nvdnotifier/slack"
 
 	"github.com/a-h/nvdnotifier/logger"
 
@@ -26,21 +28,35 @@ func main() {
 		return
 	}
 	if c.RunLocal {
-		if err := run(c.DynamoDBRegion, c.MetadataTableName, c.NotificationTableName); err != nil {
+		if err := run(c.DynamoDBRegion, c.MetadataTableName, c.NotificationTableName, c.SlackWebhookURL); err != nil {
 			l.WithError(err).Fatal("execution failed")
 		}
 		return
 	}
 	h := func(ctx context.Context, e events.CloudWatchEvent) (err error) {
-		return run(c.DynamoDBRegion, c.MetadataTableName, c.NotificationTableName)
+		return run(c.DynamoDBRegion, c.MetadataTableName, c.NotificationTableName, c.SlackWebhookURL)
 	}
 	lambda.Start(h)
 }
 
-func run(region, metadataTableName, notificationTableName string) (err error) {
-	console := func(cve nvd.CVEItem) error {
-		fmt.Println(cve.CVE.CVEDataMeta.ID)
+func run(region, metadataTableName, notificationTableName, slackWebhookURL string) (err error) {
+	logNotifier := func(cve nvd.CVEItem) error {
+		logger.For(pkg, "log").WithField("cve", cve.CVE.CVEDataMeta.ID).Info("vulnerability found")
 		return nil
+	}
+	n := slack.NewNotifier(slackWebhookURL)
+	slackNotifier := func(cve nvd.CVEItem) error {
+		var vendors []string
+		var products []string
+		for _, vd := range cve.CVE.Affects.Vendor.VendorData {
+			vendors = append(vendors, vd.VendorName)
+			for _, p := range vd.Product.ProductData {
+				products = append(products, fmt.Sprintf("%v", p.ProductName))
+			}
+		}
+		text := fmt.Sprintf("Vendor %v, Product %v: %v", strings.Join(vendors, ", "), strings.Join(products, ", "), cve.CVE.Description)
+		m := slack.NewMessage(cve.CVE.CVEDataMeta.ID, text)
+		return n.Push(m)
 	}
 	mds, err := dynamo.NewMetadataStore(region, metadataTableName)
 	if err != nil {
@@ -78,7 +94,7 @@ func run(region, metadataTableName, notificationTableName string) (err error) {
 		nvd.RecentMetadata, nvd.Recent,
 		getLastRecentMetadata, putLastRecentMetadata,
 		isNotified, putNotified,
-		[]checker.Notifier{console}, checker.IncludeGo, checker.IncludeNodeJS)
+		[]checker.Notifier{logNotifier, slackNotifier}, checker.IncludeGo, checker.IncludeNodeJS)
 	items, err := c.RecentOrUpdated()
 	if err != nil {
 		return
