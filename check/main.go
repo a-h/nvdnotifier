@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"log"
+
+	"github.com/a-h/nvdnotifier/conf"
+	"github.com/a-h/nvdnotifier/dynamo"
 
 	"github.com/a-h/nvdnotifier/logger"
 
@@ -15,57 +16,68 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-const pkg = "nvdnotified"
-
-func handler(ctx context.Context, e events.CloudWatchEvent) (err error) {
-	return run()
-}
-
-var localFlag = flag.Bool("local", false, "Sets whether the program is being executed locally (not in a Lambda) for testing.")
+const pkg = "nvdnotifier"
 
 func main() {
-	flag.Parse()
-	if *localFlag {
-		if err := run(); err != nil {
-			log.Fatal(err)
+	l := logger.For(pkg, "main")
+	c, err := conf.FromEnvironment()
+	if err != nil {
+		l.WithError(err).Error("invalid configuration")
+		return
+	}
+	if c.RunLocal {
+		if err := run(c.DynamoDBRegion, c.MetadataTableName, c.NotificationTableName); err != nil {
+			l.WithError(err).Fatal("execution failed")
 		}
 		return
 	}
-	lambda.Start(handler)
+	h := func(ctx context.Context, e events.CloudWatchEvent) (err error) {
+		return run(c.DynamoDBRegion, c.MetadataTableName, c.NotificationTableName)
+	}
+	lambda.Start(h)
 }
 
-func run() (err error) {
+func run(region, metadataTableName, notificationTableName string) (err error) {
 	console := func(cve nvd.CVEItem) error {
 		fmt.Println(cve.CVE.CVEDataMeta.ID)
 		return nil
 	}
-	getLastModifiedMetadataMock := func() (m nvd.Meta, found bool, err error) {
-		found = false
+	mds, err := dynamo.NewMetadataStore(region, metadataTableName)
+	if err != nil {
 		return
 	}
-	putLastModifiedMetadataMock := func(m nvd.Meta) error {
-		fmt.Printf("Mock: pretending to store modified metadata: '%+v'\n", m)
-		return nil
+	getLastModifiedMetadata := func() (m nvd.Meta, found bool, err error) {
+		return mds.Get(nvd.ModifiedMetadataURL)
 	}
-	getLastRecentMetadataMock := func() (m nvd.Meta, found bool, err error) {
-		found = false
+	putLastModifiedMetadata := func(m nvd.Meta) error {
+		return mds.Put(nvd.ModifiedMetadataURL, m)
+	}
+	getLastRecentMetadata := func() (m nvd.Meta, found bool, err error) {
+		return mds.Get(nvd.RecentMetadataURL)
+	}
+	putLastRecentMetadata := func(m nvd.Meta) error {
+		return mds.Put(nvd.RecentMetadataURL, m)
+	}
+	ns, err := dynamo.NewNotificationStore(region, notificationTableName)
+	if err != nil {
 		return
 	}
-	putLastRecentMetadataMock := func(m nvd.Meta) error {
-		fmt.Printf("Mock: pretending to store recent metadata: '%+v'\n", m)
-		return nil
+	isNotified := func(cve nvd.CVEItem) (ok bool, err error) {
+		hash, err := cve.Hash()
+		if err != nil {
+			return
+		}
+		_, ok, err = ns.Get(hash)
+		return
 	}
-	isNotifiedMock := func(cve nvd.CVEItem) (bool, error) {
-		return false, nil
-	}
-	putNotifiedMock := func(cve nvd.CVEItem) error {
-		return nil
+	putNotified := func(cve nvd.CVEItem) error {
+		return ns.Put(cve)
 	}
 	c := checker.New(nvd.ModifiedMetadata, nvd.Modified,
-		getLastModifiedMetadataMock, putLastModifiedMetadataMock,
+		getLastModifiedMetadata, putLastModifiedMetadata,
 		nvd.RecentMetadata, nvd.Recent,
-		getLastRecentMetadataMock, putLastRecentMetadataMock,
-		isNotifiedMock, putNotifiedMock,
+		getLastRecentMetadata, putLastRecentMetadata,
+		isNotified, putNotified,
 		[]checker.Notifier{console}, checker.IncludeGo, checker.IncludeNodeJS)
 	items, err := c.RecentOrUpdated()
 	if err != nil {

@@ -13,8 +13,14 @@ provider:
          - "dynamodb:GetItem"
          - "dynamodb:PutItem"
       Resource:
-        Fn::GetAtt: [ LastCheck, Arn ]
-
+        Fn::GetAtt: [ MetadataTable, Arn ]
+    - Effect: "Allow"
+      Action:
+         - "dynamodb:Query"
+         - "dynamodb:GetItem"
+         - "dynamodb:PutItem"
+      Resource:
+        Fn::GetAtt: [ NotificationTable, Arn ]
 package:
  exclude:
    - ./**
@@ -35,10 +41,10 @@ functions:
 
 resources:
   Resources:
-    LastCheckTable:
+    MetadataTable:
       Type: "AWS::DynamoDB::Table"
       Properties:
-        TableName: ${self:service}-${opt:stage, self:provider.stage}-lastcheck
+        TableName: ${self:service}-${opt:stage, self:provider.stage}-metadata
         PointInTimeRecoverySpecification:
           PointInTimeRecoveryEnabled: false
         SSESpecification:
@@ -46,6 +52,23 @@ resources:
         ProvisionedThroughput:
           ReadCapacityUnits: 1
           WriteCapacityUnits: 1
+        KeySchema:
+          - AttributeName: url
+            KeyType: HASH
+        AttributeDefinitions:
+          - AttributeName: url
+            AttributeType: S
+    NotificationTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        TableName: ${self:service}-${opt:stage, self:provider.stage}-notification
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: false
+        SSESpecification:
+          SSEEnabled: true
+        ProvisionedThroughput: #TODO: Enable autoscaling.
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5
         KeySchema:
           - AttributeName: id
             KeyType: HASH

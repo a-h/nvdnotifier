@@ -25,14 +25,20 @@ type Meta struct {
 // gzSize:601165
 // sha256:A19EC051954B8B6EB49BB7CB911A2B194D729D409EBC2F9DD21B93E8B0418803
 
+// RecentMetadataURL is the URL where metadata about recent CVE data is located.
+const RecentMetadataURL = "https://nvd.nist.gov/feeds/json/cve/1.0/nvdcve-1.0-recent.meta"
+
 // RecentMetadata returns metadata about the current version of the "recent" file.
 func RecentMetadata() (m Meta, err error) {
-	return getMetadata("https://nvd.nist.gov/feeds/json/cve/1.0/nvdcve-1.0-recent.meta")
+	return getMetadata(RecentMetadataURL)
 }
+
+// ModifiedMetadataURL is the URL where metadata about recently modified CVE data is located.
+const ModifiedMetadataURL = "https://nvd.nist.gov/feeds/json/cve/1.0/nvdcve-1.0-modified.meta"
 
 // ModifiedMetadata returns metadata about the current version of the "modified" file.
 func ModifiedMetadata() (m Meta, err error) {
-	return getMetadata("https://nvd.nist.gov/feeds/json/cve/1.0/nvdcve-1.0-modified.meta")
+	return getMetadata(ModifiedMetadataURL)
 }
 
 func getMetadata(url string) (m Meta, err error) {
