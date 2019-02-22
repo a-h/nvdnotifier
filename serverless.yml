@@ -51,9 +51,7 @@ resources:
           PointInTimeRecoveryEnabled: false
         SSESpecification:
           SSEEnabled: true
-        ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 1
+        BillingMode: PAY_PER_REQUEST
         KeySchema:
           - AttributeName: url
             KeyType: HASH
@@ -68,9 +66,7 @@ resources:
           PointInTimeRecoveryEnabled: false
         SSESpecification:
           SSEEnabled: true
-        ProvisionedThroughput: #TODO: Enable autoscaling.
-          ReadCapacityUnits: 5
-          WriteCapacityUnits: 5
+        BillingMode: PAY_PER_REQUEST
         KeySchema:
           - AttributeName: id
             KeyType: HASH
